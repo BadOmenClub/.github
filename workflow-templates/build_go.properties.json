@@ -1,0 +1,15 @@
+{
+    "name": "Build Go",
+    "description": "Go Build Template",
+    "iconName": "gear",
+    "categories": [
+        "Golang"
+    ],
+    "filePatterns": [
+        "package.json$",
+        "^Dockerfile",
+        "\\S*tf"
+    ],
+
+    "comment_MetadataReference": "https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/sharing-workflows-with-your-organization"
+}
