@@ -26,5 +26,5 @@ jobs:
         with:
           token: ${{ secrets.GHA_ACTION_TOKEN }}
           repository: ${{ github.repository }}
-          event-type: trigger-workflow-2
+          event-type: super-lint-success
           client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}"}'
