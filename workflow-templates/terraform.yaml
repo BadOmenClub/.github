@@ -1,0 +1,88 @@
+on:
+  push:
+    #branches: [ main ]
+  #pull_request:
+    #branches: [ main ]
+
+  #workflow_dispatch:
+  
+env:
+  IMAGE_NAME: devtools/sonarqube/8.6-developer
+  TERRAFORM_WORKING_DIRECTORY: ./terraform
+  EKS_CLUSTER_NAME: pe-staging
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v0.9.7
+        with:
+          versionSpec: '5.x'
+
+      - name: Generate Version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v0.9.7
+        with:
+          useConfigFile: true
+          configFilePath: './Gitversion.yaml' 
+
+      - name: Install Helm
+        uses: azure/setup-helm@v1
+        with:
+          version: '3.4.1'
+
+      - name: Helm Lint
+        run: helm lint --strict ./helm/sonarqube
+
+      - name: Configure Development AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.SPINNAKER_USER_AWS_ACCESS_KEY_ID}}
+          aws-secret-access-key: ${{ secrets.SPINNAKER_USER_AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+          role-to-assume: ${{ secrets.PE_STAGING_INFRASTRUCTURE_AWS_ROLE }}
+          role-skip-session-tagging: true
+          role-duration-seconds: 900
+          mask-aws-account-id: false
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: 0.13
+
+      #- name: Terraform Format
+      #  run: terraform fmt -check ${{ env.TERRAFORM_WORKING_DIRECTORY }}
+
+      - name: Terraform Validate
+        working-directory: ${{ env.TERRAFORM_WORKING_DIRECTORY }}
+        run: | 
+          terraform init -backend-config=./environments/staging/backend.tfvars
+          terraform validate .
+      - name: Terraform Plan
+        id: plan
+        working-directory: ${{ env.TERRAFORM_WORKING_DIRECTORY }}
+        run: terraform plan -lock=false -var-file=./environments/staging/vars.tfvars -var="eks_cluster_name=${{ env.EKS_CLUSTER_NAME }}" -no-color 
+
+      - name: Build image
+        run: docker build ./container --file ./container/Dockerfile -t ${{ env.IMAGE_NAME }}:${{ steps.gitversion.outputs.semVer }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build push
+        run: |
+          docker image tag ${{ env.IMAGE_NAME }}:${{ steps.gitversion.outputs.semVer }} ${{ steps.login-ecr.outputs.registry }}/${{ env.IMAGE_NAME }}:${{ steps.gitversion.outputs.semVer }} 
+          docker image push ${{ steps.login-ecr.outputs.registry }}/${{ env.IMAGE_NAME }}:${{ steps.gitversion.outputs.semVer }} 
+      - name: Terraform Apply
+        id: apply
+        working-directory: ${{ env.TERRAFORM_WORKING_DIRECTORY }}
+        run: terraform apply -auto-approve -var-file=./environments/staging/vars.tfvars -var="eks_cluster_name=${{ env.EKS_CLUSTER_NAME }}" -no-color 
