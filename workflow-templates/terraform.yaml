@@ -1,11 +1,8 @@
 on:
   repository_dispatch:
     types: [super-lint-success]  
-
-env:
   
 jobs:
-  defaults:
   run:
     working-directory: ${{ env.tf_actions_working_dir }}
   steps:
